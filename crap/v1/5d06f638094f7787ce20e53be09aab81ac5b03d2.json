@@ -1,0 +1,7 @@
+{
+  "factory": {
+    "above": 0,
+    "worst": 2,
+    "producer": "go 1.27.4"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "factory": {
+    "covered": 6,
+    "total": 7,
+    "producer": "go 1.27.4"
+  }
+}
