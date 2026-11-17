@@ -5,7 +5,7 @@ Executions: one container per Execution, supervised by a Durable Object, with a 
 running at once. Its first Workflow, "implement backlog item", takes a **Backlog item** from
 `agtk:queued` to an open pull request without a person starting it. Around the Executions the
 Factory keeps the **Backlog** moving: it unblocks items whose **Predecessor**s are done and
-sweeps stalled runs back to the queue.
+sweeps stalled items back to the queue.
 
 Read `CONTEXT.md` before naming anything. Its terms (Backlog, Backlog item, Stub, Feature,
 Factory, Dispatcher, Factory App, Predecessor) are copied from agentic-toolkit's `CONTEXT.md`,
