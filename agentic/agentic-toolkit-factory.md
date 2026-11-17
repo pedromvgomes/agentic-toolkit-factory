@@ -18,7 +18,10 @@ redefined in this repo.
 - The Factory applies `agtk:queued` only to release an item from `agtk:blocked` whose
   Predecessors are all closed as completed, and only as the Factory App. It never queues an item
   that is a stub or that no person has queued or released before. A person with write access
-  queuing an item is what first vouches for its body.
+  queuing an item is what first vouches for its body. The Factory dispatches an item only after
+  `agtk backlog verify` trusts it: every author and editor of the body has write access, and
+  nobody edited it after it was queued or released, so a release never vouches for a body a
+  person has not read.
 
 ## Layout
 
