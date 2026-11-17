@@ -209,8 +209,10 @@ character fragment taken from the middle of the secret; do not use the start or 
 Also confirm the swap happens: the step 2 and step 3 runs succeeding with placeholders is
 the evidence, because the placeholder is rejected by the upstream API when it is sent as is.
 For a direct check, a run whose prompt asks the agent to
-`curl -s -o /dev/null -w '%{http_code}' https://api.anthropic.com/v1/models -H 'authorization: Bearer sk-ant-oat01-placeholder-not-a-real-token' -H 'anthropic-version: 2023-06-01' -H 'anthropic-beta: oauth-2025-04-20'`
-should return 200 only because the Worker substituted the real token. Record the code.
+`curl -s -o /dev/null -w '%{http_code}' https://api.anthropic.com/v1/models -H "authorization: Bearer $CLAUDE_CODE_OAUTH_TOKEN" -H 'anthropic-version: 2023-06-01' -H 'anthropic-beta: oauth-2025-04-20'`
+(the variable holds the placeholder inside the container) returns 200 only when the Worker substituted
+the real token. This endpoint may not accept a subscription token at all, so a 401 from it is not
+evidence either way. Record the code.
 
 Finally confirm the response redaction: ask the agent to print the response headers of that request
 (`curl -sD -`) and check that nothing matches the real token.
