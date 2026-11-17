@@ -54,7 +54,10 @@ const stderrPath = `${runDirectory}/stderr.log`;
 const resultPath = `${runDirectory}/result`;
 const pidPath = `${runDirectory}/pid`;
 const lastMessagePath = `${runDirectory}/last-message.txt`;
-const codexHome = "/root/.codex";
+// The image user's home. An exec receives only the environment it is given,
+// so HOME is passed to every agent run rather than read from the image.
+const agentHome = "/home/agent";
+const codexHome = `${agentHome}/.codex`;
 
 // The platform caps the inactivity timeout at 6 hours.
 const inactivityTimeout = 30 * 60 * 1000;
@@ -267,8 +270,8 @@ export class AgentSandbox extends DurableObject<Env> {
 		try {
 			// Intercepts end with the container, so they are registered for every
 			// start. They are registered before start() because registering an
-			// HTTPS intercept creates the CA file that the image entrypoint
-			// copies into the system trust store.
+			// HTTPS intercept creates the CA file that the image's system CA
+			// bundle links to, and the image entrypoint exits without it.
 			await this.registerIntercepts();
 
 			if (!this.container.running) {
@@ -439,7 +442,7 @@ function agentCommand(agent: Agent, prompt: string): string[] {
 // The container environment carries placeholders only; real credentials
 // exist only in the Worker, as secrets and in CodexCredentials' storage.
 function agentEnv(agent: Agent): Record<string, string> {
-	const common = { HOME: "/root" };
+	const common = { HOME: agentHome };
 
 	if (agent === "claude") {
 		return {
@@ -448,8 +451,6 @@ function agentEnv(agent: Agent): Record<string, string> {
 			// Turns off update checks, telemetry and error reporting, so the
 			// model API is the only host Claude Code calls.
 			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-			// Allows --dangerously-skip-permissions as root.
-			IS_SANDBOX: "1",
 		};
 	}
 

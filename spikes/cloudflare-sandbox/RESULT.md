@@ -38,6 +38,16 @@ placeholder, via Node `fetch`): 401. This endpoint is not evidence of the swap e
 evidence that the swap happens is that Claude Code, which sends only the placeholder, completes
 a request that Anthropic accepts.
 
+## Container user
+
+The image runs as the non-root user `agent` (uid 1001, home `/home/agent`). Claude Code and
+Codex each completed a run on the deployed image, and each reported uid 1001 and could write
+`/workspace`. Under the `durable_object` scheduling policy this is not a security boundary:
+Cloudflare gives every process in the container the same Linux capabilities as root regardless of
+user, so a process can switch back to root. The user fixes file ownership and removes a root
+`USER` finding; it does not contain a compromised agent. The container's isolation is the
+platform's, and the Worker holding the credentials is what limits what a compromised agent gets.
+
 ## Instance lifetime observed
 
 | Field | Value |

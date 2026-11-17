@@ -190,7 +190,7 @@ curl -s "${auth[@]}" -X POST "$WORKER/sandboxes/inspect/run" -H 'content-type: a
 ```
 
 The only credential-shaped value must be the placeholder
-`sk-ant-oat01-placeholder-not-a-real-token`. Also have the agent print `/root/.codex/auth.json`:
+`sk-ant-oat01-placeholder-not-a-real-token`. Also have the agent print `/home/agent/.codex/auth.json`:
 its `access_token` must end in `.placeholder-signature` and its `refresh_token` must be
 `rt_placeholder-not-a-real-token`.
 
@@ -208,7 +208,8 @@ character fragment taken from the middle of the secret; do not use the start or 
 
 Also confirm the swap happens: the step 2 and step 3 runs succeeding with placeholders is
 the evidence, because the placeholder is rejected by the upstream API when it is sent as is.
-For a direct check, a run whose prompt asks the agent to
+For a direct check, a run whose prompt asks the agent to run the equivalent of (the image has no
+`curl`, so the agent uses Node's `fetch`)
 `curl -s -o /dev/null -w '%{http_code}' https://api.anthropic.com/v1/models -H "authorization: Bearer $CLAUDE_CODE_OAUTH_TOKEN" -H 'anthropic-version: 2023-06-01' -H 'anthropic-beta: oauth-2025-04-20'`
 (the variable holds the placeholder inside the container) returns 200 only when the Worker substituted
 the real token. This endpoint may not accept a subscription token at all, so a 401 from it is not
@@ -328,7 +329,7 @@ the throwaway tokens. State in `RESULT.md` what the fallback exposes:
   example by pushing it to a repository or posting it as an issue comment, and `CredentialInjector`
   does not limit where it is valid;
 - for a subscription token, the blast radius is that whole Claude subscription until the token is
-  revoked; for a ChatGPT `auth.json` written into `/root/.codex` in place of the placeholder, the
+  revoked; for a ChatGPT `auth.json` written into `/home/agent/.codex` in place of the placeholder, the
   ChatGPT account and its refresh token.
 
 Record the blast radius for each failed CLI, and the revocation steps you took.

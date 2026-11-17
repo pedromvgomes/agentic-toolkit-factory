@@ -17,19 +17,31 @@ RUN npm install --global --ignore-scripts @openai/codex@0.169.0
 # pinned by digest, so a retagged upstream image does not change what a deploy builds.
 COPY --from=docker.io/cloudflare/sandbox:1.0.3@sha256:fc1740c3cba26461f0ab1771287c84018ab2cca43a70ebb823087c85d780aaec /usr/local/bin/sandbox-shim /usr/local/bin/sandbox-shim
 
-# The interception CA exists only at run time, so the entrypoint installs it
-# into the system trust store before anything else runs. The Durable Object
-# registers its HTTPS intercepts before starting the container, which is what
-# creates the file; when it is missing the container exits rather than run
-# with a trust store that rejects every intercepted request.
+# Every HTTPS request from the container is intercepted and re-signed with the
+# interception CA, so the system CA bundle is a link to that CA alone. The CA
+# file exists only at run time, created when the Durable Object registers its
+# HTTPS intercepts, so the link dangles in the image and resolves once the
+# container starts. Nothing has to write to the trust store at run time.
+RUN ln -sf /etc/cloudflare/certs/cloudflare-containers-ca.crt /etc/ssl/certs/ca-certificates.crt
+
+# The entrypoint, every exec and every sandbox-shim file operation run as this
+# user, so the agent's files and the run directory belong to it.
+RUN useradd --create-home --home-dir /home/agent --shell /bin/bash --user-group agent \
+	&& install -d -o agent -g agent /workspace
+
+# The Durable Object registers its HTTPS intercepts before starting the
+# container; when the CA file is missing or unreadable the container exits
+# rather than run with a trust store that rejects every intercepted request.
 COPY --chmod=755 <<'EOF' /usr/local/bin/sandbox-entrypoint
 #!/bin/sh
-set -eu
-cp /etc/cloudflare/certs/cloudflare-containers-ca.crt \
-	/usr/local/share/ca-certificates/cloudflare-containers-ca.crt
-update-ca-certificates
+ca=/etc/cloudflare/certs/cloudflare-containers-ca.crt
+if [ ! -r "$ca" ]; then
+	echo "sandbox-entrypoint: $ca is missing or unreadable" >&2
+	exit 1
+fi
 exec sleep infinity
 EOF
 
+USER agent
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint"]
