@@ -111,7 +111,10 @@ governance in [`.gt-repo.yaml`](.gt-repo.yaml)), [agentic-toolkit](https://githu
 gates declared in [`.lydite/`](.lydite/)).
 
 All code lives under `source/`, one Go module per project; the Factory itself is
-[`source/factory`](source/factory).
+[`source/factory`](source/factory), which builds `agtk-factory`, a CLI on
+`go.vipengele.org/cli`. Its `run <definition>` command takes a Workflow Definition and returns
+an error because the Factory has no engine to execute one; `version` (`--json`) comes from the
+framework.
 
 ```sh
 gt clone pedromvgomes/agentic-toolkit-factory   # runs agtk sync through .gt.yaml
