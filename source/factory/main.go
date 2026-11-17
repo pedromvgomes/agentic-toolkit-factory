@@ -15,8 +15,11 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout))
 }
 
-// run writes the build's version and returns the process exit code.
+// run writes the build's version and returns the process exit code: 1 when
+// the version cannot be written, since nothing else would report it.
 func run(_ []string, stdout io.Writer) int {
-	fmt.Fprintf(stdout, "factory %s\n", version)
+	if _, err := fmt.Fprintf(stdout, "factory %s\n", version); err != nil {
+		return 1
+	}
 	return 0
 }
