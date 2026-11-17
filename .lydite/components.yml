@@ -12,3 +12,9 @@ components:
     dir: source/factory
     runner: go-test
     args: ["-race", "./..."]
+
+# Spikes are throwaway experiments, not projects: no component builds, tests or
+# gates them, and the orphan gate is told so here rather than left to flag their
+# source.
+excludes:
+  - "spikes/**"
