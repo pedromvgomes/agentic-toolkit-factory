@@ -11,7 +11,7 @@ declare global {
 		// Real agent credentials. They exist only as Worker secrets and are
 		// never passed into the container.
 		CLAUDE_CODE_OAUTH_TOKEN: string;
-		OPENAI_API_KEY: string;
+		OPENAI_API_KEY?: string;
 	}
 
 	namespace Cloudflare {

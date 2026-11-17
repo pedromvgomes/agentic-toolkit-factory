@@ -9,9 +9,10 @@
 	},
 	"upload_source_maps": true,
 	// Credentials are Worker secrets only; the container receives placeholders.
-	// `wrangler deploy` fails when any of these is missing.
+	// `wrangler deploy` fails when a required one is missing; OPENAI_API_KEY is optional and
+	// Codex requests are answered with 502 while it is unset.
 	"secrets": {
-		"required": ["RUNNER_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY"],
+		"required": ["RUNNER_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
 	},
 	"containers": [
 		{

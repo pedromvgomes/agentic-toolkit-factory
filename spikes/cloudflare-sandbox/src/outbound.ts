@@ -5,7 +5,7 @@ type Credential = {
 	// The request header that carries the credential, as `Bearer <token>`.
 	header: string;
 	placeholder: string;
-	secret: (env: Env) => string;
+	secret: (env: Env) => string | undefined;
 };
 
 // Claude Code authenticates a CLAUDE_CODE_OAUTH_TOKEN as `Authorization:
