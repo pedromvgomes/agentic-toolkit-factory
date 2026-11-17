@@ -95,7 +95,7 @@ export type CodexTokens = {
 };
 
 type StoredTokens = CodexTokens & {
-	// SHA-256 of the CODEX_AUTH_JSON the pair was seeded from. A different
+	// SHA-256 of the Codex auth.json secret the pair was seeded from. A different
 	// secret is a different login, which replaces the stored pair.
 	seed: string;
 };
@@ -221,10 +221,12 @@ export class CodexCredentials extends DurableObject<Env> {
 	}
 
 	private async load(): Promise<CodexTokens> {
-		const secret = this.env.CODEX_AUTH_JSON;
+		// The base64 auth.json exceeds the size limit of one Worker secret, so it
+		// is stored as two halves that concatenate back into the original.
+		const secret = (this.env.CODEX_AUTH_JSON_1 ?? "") + (this.env.CODEX_AUTH_JSON_2 ?? "");
 
 		if (!secret) {
-			throw new Error("CODEX_AUTH_JSON is not configured");
+			throw new Error("CODEX_AUTH_JSON_1 and CODEX_AUTH_JSON_2 are not configured");
 		}
 
 		const seed = await sha256(secret);
@@ -309,7 +311,7 @@ function parseAuthJson(text: string): CodexTokens {
 			: undefined;
 
 	if (typeof tokens !== "object" || tokens === null) {
-		throw new Error("CODEX_AUTH_JSON has no tokens object");
+		throw new Error("the Codex auth.json has no tokens object");
 	}
 
 	const { id_token, access_token, refresh_token, account_id, oauth_provenance } =
@@ -321,7 +323,7 @@ function parseAuthJson(text: string): CodexTokens {
 		typeof refresh_token !== "string" ||
 		refresh_token === ""
 	) {
-		throw new Error("CODEX_AUTH_JSON lacks id_token, access_token or refresh_token");
+		throw new Error("the Codex auth.json lacks id_token, access_token or refresh_token");
 	}
 
 	const provenance =

@@ -50,9 +50,10 @@ or hyphens.
 
 ## Secrets
 
-The Worker needs three secrets, named as in `secrets.required` in `wrangler.jsonc`:
-`RUNNER_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and `CODEX_AUTH_JSON` (the base64 of the spike login's
-`auth.json`). `wrangler deploy` fails when any is missing. Supply them with `--secrets-file`; never
+The Worker needs four secrets, named as in `secrets.required` in `wrangler.jsonc`:
+`RUNNER_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, and `CODEX_AUTH_JSON_1` and `CODEX_AUTH_JSON_2` (the two
+halves of the base64 of the spike login's `auth.json`, split because one Worker secret is limited
+to about 5 kB). `wrangler deploy` fails when any is missing. Supply them with `--secrets-file`; never
 commit the file.
 
 ```bash
@@ -65,8 +66,10 @@ git check-ignore -v .env.spike
 cat > .env.spike <<EOF
 RUNNER_TOKEN=$(openssl rand -hex 32)
 CLAUDE_CODE_OAUTH_TOKEN=<value printed by claude setup-token>
-CODEX_AUTH_JSON=$(base64 < "$CODEX_HOME/auth.json" | tr -d '\n')
 EOF
+auth="$(base64 < "$CODEX_HOME/auth.json" | tr -d '\n')"
+half=$(( (${#auth} + 1) / 2 ))
+printf 'CODEX_AUTH_JSON_1=%s\nCODEX_AUTH_JSON_2=%s\n' "${auth:0:half}" "${auth:half}" >> .env.spike
 chmod 600 .env.spike
 ```
 
@@ -74,10 +77,10 @@ The container never receives these. It receives placeholders: `CLAUDE_CODE_OAUTH
 `placeholderTokens.claudeCodeOauthToken` (`src/sandbox.ts`), and Codex gets an `auth.json` of
 placeholder tokens (`src/codex-credentials.ts`).
 
-`CODEX_AUTH_JSON` only seeds the `CodexCredentials` Durable Object. From the first Codex request
+`CODEX_AUTH_JSON_1` and `CODEX_AUTH_JSON_2` only seed the `CodexCredentials` Durable Object. From the first Codex request
 on, the Worker refreshes the login itself and keeps the current token pair in that object's
 storage; a secret cannot hold it because a secret cannot change at run time. Setting a different
-`CODEX_AUTH_JSON` replaces the stored pair. The first refresh spends the refresh token in the
+login in them replaces the stored pair. The first refresh spends the refresh token in the
 exported file, so once the Worker has used the login, delete `$CODEX_HOME` on your machine rather
 than use it.
 

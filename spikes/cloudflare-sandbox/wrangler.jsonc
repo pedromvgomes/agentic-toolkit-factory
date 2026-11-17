@@ -9,10 +9,10 @@
 	},
 	"upload_source_maps": true,
 	// Credentials are Worker secrets only; the container receives placeholders.
-	// `wrangler deploy` fails when one is missing. CODEX_AUTH_JSON only seeds
-	// CodexCredentials, which stores the refreshed ChatGPT tokens from then on.
+	// `wrangler deploy` fails when one is missing. CODEX_AUTH_JSON_1 and _2 only
+	// seed CodexCredentials, which stores the refreshed ChatGPT tokens from then on.
 	"secrets": {
-		"required": ["RUNNER_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CODEX_AUTH_JSON"],
+		"required": ["RUNNER_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CODEX_AUTH_JSON_1", "CODEX_AUTH_JSON_2"],
 	},
 	"containers": [
 		{

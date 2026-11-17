@@ -17,7 +17,8 @@ declare global {
 		CLAUDE_CODE_OAUTH_TOKEN: string;
 		// Base64 of a Codex auth.json from `codex login`. It seeds
 		// CodexCredentials, which stores every refreshed pair after it.
-		CODEX_AUTH_JSON: string;
+		CODEX_AUTH_JSON_1: string;
+		CODEX_AUTH_JSON_2: string;
 	}
 
 	namespace Cloudflare {
