@@ -153,6 +153,10 @@ export class AgentSandbox extends DurableObject<Env> {
 				return "busy";
 			}
 
+			// The record goes before the run directory: a launch that throws after
+			// the directory is gone must read as `none` or `lost`, never as a
+			// `running` run with no pid file and no alarm left to check it.
+			this.ctx.storage.kv.delete(runKey);
 			await this.files.remove(runDirectory, { recursive: true, force: true });
 			await this.files.mkdir(runDirectory, { recursive: true });
 			await this.files.mkdir(workDirectory, { recursive: true });

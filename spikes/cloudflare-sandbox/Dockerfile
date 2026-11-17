@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-trixie-slim
+FROM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends bash ca-certificates git ripgrep \
@@ -13,8 +13,9 @@ RUN npm install --global @anthropic-ai/claude-code@2.1.326
 # install scripts.
 RUN npm install --global --ignore-scripts @openai/codex@0.169.0
 
-# The tag matches the @cloudflare/sandbox version in package.json.
-COPY --from=docker.io/cloudflare/sandbox:1.0.3 /usr/local/bin/sandbox-shim /usr/local/bin/sandbox-shim
+# The tag matches the @cloudflare/sandbox version in package.json. Both base images are
+# pinned by digest, so a retagged upstream image does not change what a deploy builds.
+COPY --from=docker.io/cloudflare/sandbox:1.0.3@sha256:fc1740c3cba26461f0ab1771287c84018ab2cca43a70ebb823087c85d780aaec /usr/local/bin/sandbox-shim /usr/local/bin/sandbox-shim
 
 # The interception CA exists only at run time, so the entrypoint installs it
 # into the system trust store before anything else runs. The Durable Object
