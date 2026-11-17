@@ -1,7 +1,8 @@
 # agentic-toolkit-factory
 
-The **Factory** that takes agentic-toolkit **Backlog item**s from `agtk:queued` to an open pull
-request without a person starting them.
+The **Factory** that starts agentic-toolkit **Workflow Execution**s from their triggers without a
+person starting them; the one that implements a **Backlog item** takes it from `agtk:queued` to an
+open pull request.
 
 ## Language
 
@@ -34,20 +35,49 @@ one itself — never dispatched, never in a state — and it closes when its las
 _Avoid_: epic, request issue, parent issue
 
 **Factory**:
-The loop that takes a **Backlog item** from queued to an open pull request without a person
-starting it: unblocking items whose **Predecessor**s are done, sweeping stalled runs back to the
-queue, and dispatching. Stops at the pull request; merging is never the factory's.
+The loop that starts **Workflow Execution**s from their triggers without a person starting them:
+unblocking **Backlog item**s whose **Predecessor**s are done, sweeping stalled items back to the
+queue, and dispatching. A Workflow Execution does what its **Workflow Definition**'s **Step**s do
+and nothing more; the one that implements a Backlog item takes it from queued to an open pull
+request and stops there because its own Steps do.
 _Avoid_: pipeline, automation, bot
 
 **Dispatcher**:
-The step of the **Factory** that chooses which queued **Backlog item**s start, within a fixed
-number running at once, and starts a **Cloud session** for each.
+The part of the **Factory** that chooses which queued **Backlog item**s start, within the caps
+it keeps on how many run at once, and starts a **Workflow Execution** for each.
 _Avoid_: scheduler, runner, picker
 
 **Factory App**:
 The GitHub App the **Factory** acts as. Holds issue permissions and no access to code, and its
-key has one holder. Distinct from the review **App registration**, and never the **Relay**.
+key has one holder. Code-capable work in a **Workflow Execution** is done with a token issued for
+that Workflow Execution alone, never with the Factory App's. Distinct from the review **App
+registration**, and never the **Relay**.
 _Avoid_: bot, factory token
+
+**Workflow Definition**:
+The declarative description of an automated procedure, authored as YAML in hatua's Workflow
+Definition format (hatua's own glossary uses the same term): its triggers, its **Step**s, how
+one Step's outputs map to the next Step's inputs, and where it forks, repeats or recovers.
+Distinct from a GitHub Actions workflow, which this repository names in full.
+_Avoid_: workflow, pipeline, playbook, recipe
+
+**Workflow Execution**:
+One run of a **Workflow Definition** at one resolved commit: the trigger that started it, its
+inputs, how each **Step** ended, and its outcome. Read, never edited.
+_Avoid_: workflow run, job, build, pipeline run
+
+**Step**:
+One node of a **Workflow Definition**. An agentic Step runs a model session, a script Step runs
+a command, and a control-flow Step — fork, repeat, for_each, try, set_var — is evaluated without
+a model. Distinct from a **Task**, which is a unit of a **Backlog item**'s plan.
+_Avoid_: task, stage, action, job
+
+**Webhook registration**:
+What makes one **Workflow Definition** triggerable from outside. It names a repository and the
+Workflow Definition, holds the hard-to-guess URL and the signing secret issued for it, fixes the
+ceiling on the token permissions a **Workflow Execution** it starts is given, and says which
+inputs may be substituted unwrapped into a prompt.
+_Avoid_: webhook, hook, endpoint
 
 **Predecessor**:
 The pull request a **Handoff**'s work may not start before, merged into the base branch. A

@@ -1,5 +1,6 @@
-// Command factory runs the Factory: the loop that takes agentic-toolkit Backlog
-// items from agtk:queued to an open pull request without a person starting them.
+// Command factory runs the Factory: the loop that starts agentic-toolkit Workflow
+// Executions from their triggers without a person starting them. The Execution that
+// implements a Backlog item takes it from agtk:queued to an open pull request.
 package main
 
 import (
