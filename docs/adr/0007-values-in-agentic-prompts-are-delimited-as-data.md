@@ -10,9 +10,14 @@ reliable way to tell the template's instructions from instructions inside a valu
 ## Decision
 
 Every value substituted into an agentic prompt is wrapped in a delimited block. The boundary of
-the block is a random string generated for each run, so a value cannot contain the closing
-delimiter in advance, and the prompt carries a preamble that says the content of the blocks is
-data and not instructions.
+the block is a random string generated for each run, so a value written before the run cannot
+contain the closing delimiter, and the prompt carries a preamble that says the content of the
+blocks is data and not instructions.
+
+The boundary is visible to the model in every prompt of the run, and one step's outputs feed the
+next step's inputs, so a model steered in an early step can write the boundary into an output. A
+value that contains the boundary string is therefore rejected before it is substituted, whichever
+step produced it.
 
 An opt-in function inserts a value unwrapped. It is available only when the registration allows
 it for that input, so a definition cannot unwrap an input the registration did not clear.

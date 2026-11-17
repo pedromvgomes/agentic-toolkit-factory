@@ -1,7 +1,8 @@
 # agentic-toolkit-factory
 
-The **Factory** that takes agentic-toolkit **Backlog item**s from `agtk:queued` to an open pull
-request without a person starting them.
+The **Factory** that starts agentic-toolkit **Workflow Execution**s from their triggers without a
+person starting them; the one that implements a **Backlog item** takes it from `agtk:queued` to an
+open pull request.
 
 ## Language
 

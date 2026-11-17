@@ -17,6 +17,13 @@ number running at once at 3, and stops an Execution when its outcome is reached.
 the container reports to it through a reserved internal host, which the Outbound Worker
 intercepts; the container has no other path to the Durable Object.
 
+The model session shares the container with the engine and reads untrusted text, so it can reach
+the reserved host too. The Outbound Worker therefore binds each container to its own Execution ID
+from the container's identity, never from anything the request claims, and allows a fixed set of
+operations on that Execution only: report a step result or checkpoint, and take, renew or release
+a lease. No route on the reserved host returns or changes a credential or token, and none touches
+another Execution.
+
 - **Provider leases.** An agentic step holds a lease on its provider while it runs: claude has 3
   and openai has 1. A lease has a TTL and is kept alive while the step runs, so a lease held by a
   container that died expires instead of blocking the provider.
