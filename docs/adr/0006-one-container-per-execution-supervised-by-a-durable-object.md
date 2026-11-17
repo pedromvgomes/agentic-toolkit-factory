@@ -22,8 +22,7 @@ the reserved host too. The Outbound Worker therefore binds each container to its
 from the container's identity, never from anything the request claims, and allows a fixed set of
 operations on that Execution only: report a step result or checkpoint, and take, renew or release
 a lease. No route on the reserved host returns or changes a credential or token, and none touches
-another Execution. The Durable Object accepts a step result or checkpoint only for the step it
-dispatched as current, in order, and rejects a repeated report.
+another Execution.
 
 - **Provider leases.** An agentic step holds a lease on its provider while it runs: claude has 3
   and openai has 1. A lease has a TTL and is kept alive while the step runs, so a lease held by a
@@ -56,7 +55,6 @@ Object, it survives a container exit and lets a new container resume.
 - A workspace held only in a hidden ref exists only when the ceiling permits a push; without it
   an interrupted Execution resumes from a fresh workspace.
 - The model session and the engine share a container, so the Outbound Worker cannot tell their
-  requests apart. A steered model session can still report a result for the step in flight; it
-  cannot report for another step, repeat a report, or reach another Execution. The Execution's
-  record is therefore only as trustworthy as the step in flight, and the token's scope remains the
-  control that bounds the harm.
+  requests apart. A steered model session can write step results and checkpoints for its own
+  Execution, not for another one. The Execution's record is therefore only as trustworthy as the
+  model sessions that ran in it, and the token's scope remains the control that bounds the harm.
