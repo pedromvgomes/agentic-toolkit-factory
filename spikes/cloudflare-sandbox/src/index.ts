@@ -1,23 +1,29 @@
+import type { CodexCredentials } from "./codex-credentials";
 import type { Agent, AgentSandbox } from "./sandbox";
 
+export { CodexCredentials } from "./codex-credentials";
 export { CredentialInjector } from "./outbound";
 export { AgentSandbox, Deny, Egress } from "./sandbox";
 
 declare global {
 	interface Env {
 		SANDBOX: DurableObjectNamespace<AgentSandbox>;
+		// Holds the ChatGPT login's current token pair for Codex.
+		CODEX_CREDENTIALS: DurableObjectNamespace<CodexCredentials>;
 		// Bearer token every request to this Worker must present.
 		RUNNER_TOKEN: string;
 		// Real agent credentials. They exist only as Worker secrets and are
 		// never passed into the container.
 		CLAUDE_CODE_OAUTH_TOKEN: string;
-		OPENAI_API_KEY?: string;
+		// Base64 of a Codex auth.json from `codex login`. It seeds
+		// CodexCredentials, which stores every refreshed pair after it.
+		CODEX_AUTH_JSON: string;
 	}
 
 	namespace Cloudflare {
 		interface GlobalProps {
 			mainModule: typeof import("./index");
-			durableNamespaces: "AgentSandbox";
+			durableNamespaces: "AgentSandbox" | "CodexCredentials";
 		}
 	}
 }

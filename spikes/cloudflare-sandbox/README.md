@@ -7,10 +7,10 @@ real credentials substituted by the Worker on the way out?
 
 The Worker (`src/index.ts`) exposes four routes. A Durable Object (`src/sandbox.ts`) owns one
 container per sandbox name, intercepts the container's outbound HTTPS, and routes
-`api.anthropic.com` and `api.openai.com` through `CredentialInjector` (`src/outbound.ts`), which
-swaps the placeholder bearer token for the real Worker secret. Every other request is limited to
-the allow-list in `allowedHosts` (`github.com`, `api.github.com`, `proxy.golang.org`,
-`sum.golang.org`, `api.anthropic.com`, `api.openai.com`), HTTPS only.
+`api.anthropic.com`, `chatgpt.com` and `auth.openai.com` through `CredentialInjector`
+(`src/outbound.ts`), which swaps the placeholder credential for the real one. Every other request
+is limited to the allow-list in `allowedHosts` (`github.com`, `api.github.com`, `proxy.golang.org`,
+`sum.golang.org`, `api.anthropic.com`, `chatgpt.com`, `auth.openai.com`), HTTPS only.
 
 Record everything in `RESULT.md`. Do not invent or round results; leave a field as "not run" when
 a step was not run.
@@ -37,8 +37,12 @@ or hyphens.
 - Node (a current LTS) and `npm`.
 - A Claude subscription token: run `claude setup-token` and keep the printed `sk-ant-oat01-...`
   value.
-- An OpenAI credential for Codex: an API key (`OPENAI_API_KEY` in the Worker) for the default path.
-  A ChatGPT login is an open question, see "Codex authentication".
+- A ChatGPT login for Codex, made for this spike alone (see "Codex authentication"):
+
+  ```bash
+  export CODEX_HOME=$(mktemp -d)
+  codex login                      # ChatGPT sign-in, written to $CODEX_HOME/auth.json
+  ```
 - Throwaway credentials only. The container can reach `github.com` and `api.github.com`, so any
   GitHub token or repository you hand an agent must be disposable. Use a scratch repository and a
   fine-grained token scoped to it, and revoke it afterwards. Use throwaway or spend-capped model
@@ -47,8 +51,9 @@ or hyphens.
 ## Secrets
 
 The Worker needs three secrets, named as in `secrets.required` in `wrangler.jsonc`:
-`RUNNER_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and `OPENAI_API_KEY`. `wrangler deploy` fails when any is
-missing. Supply them with `--secrets-file`; never commit the file.
+`RUNNER_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and `CODEX_AUTH_JSON` (the base64 of the spike login's
+`auth.json`). `wrangler deploy` fails when any is missing. Supply them with `--secrets-file`; never
+commit the file.
 
 ```bash
 cd spikes/cloudflare-sandbox
@@ -60,13 +65,21 @@ git check-ignore -v .env.spike
 cat > .env.spike <<EOF
 RUNNER_TOKEN=$(openssl rand -hex 32)
 CLAUDE_CODE_OAUTH_TOKEN=<value printed by claude setup-token>
-OPENAI_API_KEY=<throwaway OpenAI API key>
+CODEX_AUTH_JSON=$(base64 < "$CODEX_HOME/auth.json" | tr -d '\n')
 EOF
 chmod 600 .env.spike
 ```
 
-The container never receives these. It receives placeholders (`placeholderTokens` in
-`src/sandbox.ts`) in `CLAUDE_CODE_OAUTH_TOKEN` and `CODEX_API_KEY`.
+The container never receives these. It receives placeholders: `CLAUDE_CODE_OAUTH_TOKEN` carries
+`placeholderTokens.claudeCodeOauthToken` (`src/sandbox.ts`), and Codex gets an `auth.json` of
+placeholder tokens (`src/codex-credentials.ts`).
+
+`CODEX_AUTH_JSON` only seeds the `CodexCredentials` Durable Object. From the first Codex request
+on, the Worker refreshes the login itself and keeps the current token pair in that object's
+storage; a secret cannot hold it because a secret cannot change at run time. Setting a different
+`CODEX_AUTH_JSON` replaces the stored pair. The first refresh spends the refresh token in the
+exported file, so once the Worker has used the login, delete `$CODEX_HOME` on your machine rather
+than use it.
 
 ## 1. Deploy
 
@@ -127,31 +140,38 @@ until s=$(curl -s "${auth[@]}" "$WORKER/sandboxes/codex1/run"); \
 printf '%s\n' "$s" | jq .
 ```
 
-Codex runs with `CODEX_API_KEY` set to a placeholder, so it calls `api.openai.com` with an API-key
-credential. Judge success and failure as for Claude Code, and record it in `RESULT.md`.
+Codex runs on the ChatGPT login, billed to the ChatGPT plan. Judge success and failure as for
+Claude Code, and record it in `RESULT.md`.
 
 ### Codex authentication
 
-Which credential Codex uses is open. Two candidates:
+Codex reads its login from `$CODEX_HOME/auth.json`. Before each Codex run the Durable Object
+writes one there whose access, refresh and ID tokens are placeholders: structurally valid JWTs
+with a far-future `exp` and a fake signature, carrying only the login's account ID, plan type and
+FedRAMP flag, which Codex needs to route requests. Because the placeholder access token never nears expiry,
+Codex does not refresh on its own; it refreshes only to recover from a 401.
 
-- **API key** (`CODEX_API_KEY`, billed to the OpenAI API). Tested by this step and the default of
-  the code. Only `api.openai.com` is involved.
-- **ChatGPT login** (`~/.codex/auth.json` with access and refresh tokens, billed to the ChatGPT
-  plan). Codex then likely calls `chatgpt.com` and refreshes tokens at `auth.openai.com`; neither
-  is in `allowedHosts`, and `CredentialInjector` swaps only a bearer value, not an `auth.json`
-  file with a refresh flow.
+- **`chatgpt.com`** receives Codex's model and account requests. `CredentialInjector` replaces
+  the placeholder bearer with the real access token and sets `chatgpt-account-id` from the real
+  `auth.json`. The access token is refreshed first when it is within five minutes of expiry, and
+  a 401 refreshes it and retries the request once. A WebSocket upgrade is answered with 426, which
+  makes Codex use HTTPS for the session, so every response passes through redaction.
+- **`auth.openai.com/oauth/token`** receives Codex's refresh. A refresh presenting the placeholder
+  refresh token is never forwarded: the Worker refreshes the real pair, stores it, and returns
+  placeholders to the container.
 
-To test the ChatGPT path:
+Every refresh runs in one queue in the `CodexCredentials` Durable Object, because refresh tokens
+are single-use: two refreshes presenting the same token break the login. The real access,
+refresh and ID tokens are replaced with their placeholders in every response header and body
+before it reaches the container.
 
-1. On your own machine run `codex login`, then look at which hosts a `codex exec` run reaches
-   (for example with a local proxy or `lsof -i` while it runs). Record the hosts.
-2. Compare with `allowedHosts`. In `wrangler tail`, a host that is not allowed shows as
-   `Blocked https://<host>`.
-3. Placing `auth.json` in the container puts a refreshable credential there, which is the
-   fallback below: record it as such, with the hosts you had to allow.
+**Run one Codex run per login at a time.** The Worker serialises its own refreshes, but the login
+has no protection against a second holder, and parallel runs on one ChatGPT login are not part of
+what this spike tests. Two concurrent Codex runs need two separate logins, each in its own
+deployment; copies of one `auth.json` are the same login.
 
-Record in `RESULT.md` which of the two was used for each result, so the verdict names its
-credential type.
+Record in `RESULT.md` that the Codex results use a ChatGPT login, and any host that shows as
+`Blocked https://<host>` in `wrangler tail` during a Codex run.
 
 ## 4. Confirm the real token never reaches the container
 
@@ -166,8 +186,10 @@ curl -s "${auth[@]}" -X POST "$WORKER/sandboxes/inspect/run" -H 'content-type: a
   -d '{"agent":"claude","prompt":"Run these shell commands and print their output verbatim, with no commentary: `env | sort`; then `for f in /proc/[0-9]*/environ; do tr \"\\0\" \"\\n\" < $f; done | sort -u`."}'
 ```
 
-The only credential-shaped values must be the placeholders
-`sk-ant-oat01-placeholder-not-a-real-token` and `sk-placeholder-not-a-real-token`.
+The only credential-shaped value must be the placeholder
+`sk-ant-oat01-placeholder-not-a-real-token`. Also have the agent print `/root/.codex/auth.json`:
+its `access_token` must end in `.placeholder-signature` and its `refresh_token` must be
+`rt_placeholder-not-a-real-token`.
 
 Filesystem, matching token shapes while excluding the placeholders:
 
@@ -286,7 +308,8 @@ guess; record:
    means the check is local.
 3. What the CLI checks locally: the token's prefix or length, an `auth.json` file, a login state,
    or a profile or account call made before the model call. Test by changing only the placeholder's
-   shape (a longer value, a different prefix) in `placeholderTokens` and redeploying, and record
+   shape (a longer value, a different prefix) in `placeholderTokens`, or in `codexPlaceholders` for
+   Codex, and redeploying, and record
    which shape the CLI accepts.
 
 If no placeholder shape works, the fallback is to put the real credential in the container: in
@@ -300,8 +323,8 @@ the throwaway tokens. State in `RESULT.md` what the fallback exposes:
   example by pushing it to a repository or posting it as an issue comment, and `CredentialInjector`
   does not limit where it is valid;
 - for a subscription token, the blast radius is that whole Claude subscription until the token is
-  revoked; for an API key, the spend on that key; for a ChatGPT `auth.json`, the account and its
-  refresh token.
+  revoked; for a ChatGPT `auth.json` written into `/root/.codex` in place of the placeholder, the
+  ChatGPT account and its refresh token.
 
 Record the blast radius for each failed CLI, and the revocation steps you took.
 
@@ -313,4 +336,5 @@ rm .env.spike
 ```
 
 Revoke the Claude token (`claude setup-token` creates a new one; revoke the old one in your
-account settings), the OpenAI key, and every GitHub token handed to an agent.
+account settings), sign the spike's ChatGPT login out of its sessions in the ChatGPT account
+settings, and revoke every GitHub token handed to an agent.

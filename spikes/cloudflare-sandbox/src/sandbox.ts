@@ -1,5 +1,6 @@
 import { Files, SandboxFileError } from "@cloudflare/sandbox";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+import { codexCredentials } from "./codex-credentials";
 
 export type Agent = "claude" | "codex";
 
@@ -25,22 +26,25 @@ export const allowedHosts: readonly string[] = [
 	"proxy.golang.org",
 	"sum.golang.org",
 	"api.anthropic.com",
-	"api.openai.com",
+	"chatgpt.com",
+	"auth.openai.com",
 ];
 
 // The allowed hosts whose requests go through CredentialInjector, which
 // exchanges the container's placeholder credential for the real one. Every
 // other allowed host is reached through Egress with the request unchanged.
-export const credentialHosts = ["api.anthropic.com", "api.openai.com"] as const;
+// chatgpt.com serves Codex's model and account requests on a ChatGPT login,
+// and auth.openai.com is where Codex refreshes that login.
+export const credentialHosts = ["api.anthropic.com", "chatgpt.com", "auth.openai.com"] as const;
 
 export type CredentialHost = (typeof credentialHosts)[number];
 
 // The container holds these values in place of real credentials. They are
 // not secrets: a request that carries one reaches its host unauthenticated
 // unless the handler registered for that host substitutes the real value.
+// Codex's placeholders are in codex-credentials.ts.
 export const placeholderTokens = {
 	claudeCodeOauthToken: "sk-ant-oat01-placeholder-not-a-real-token",
-	codexApiKey: "sk-placeholder-not-a-real-token",
 } as const;
 
 const workDirectory = "/workspace/work";
@@ -50,6 +54,7 @@ const stderrPath = `${runDirectory}/stderr.log`;
 const resultPath = `${runDirectory}/result`;
 const pidPath = `${runDirectory}/pid`;
 const lastMessagePath = `${runDirectory}/last-message.txt`;
+const codexHome = "/root/.codex";
 
 // The platform caps the inactivity timeout at 6 hours.
 const inactivityTimeout = 30 * 60 * 1000;
@@ -153,6 +158,16 @@ export class AgentSandbox extends DurableObject<Env> {
 			await this.files.mkdir(workDirectory, { recursive: true });
 			// Codex refuses to run outside a Git repository.
 			await this.exec(["/bin/sh", "-c", "[ -d .git ] || git init -q"], workDirectory, {});
+
+			if (agent === "codex") {
+				// Written for every run, so a run never starts from an auth.json
+				// an earlier run or agent changed.
+				await this.files.mkdir(codexHome, { recursive: true });
+				await this.files.writeFile(
+					`${codexHome}/auth.json`,
+					await codexCredentials(this.env).placeholderAuthJson(),
+				);
+			}
 
 			await this.container.exec(
 				["/bin/sh", "-c", runScript, "run", runDirectory, ...agentCommand(agent, prompt)],
@@ -409,13 +424,16 @@ function agentCommand(agent: Agent, prompt: string): string[] {
 		// The plugin marketplace sync clones a repository on every run.
 		"--config",
 		"features.plugins=false",
+		// Reads the login from $CODEX_HOME/auth.json, never from a keyring.
+		"--config",
+		'cli_auth_credentials_store="file"',
 		"--",
 		prompt,
 	];
 }
 
 // The container environment carries placeholders only; real credentials
-// exist solely as Worker secrets.
+// exist only in the Worker, as secrets and in CodexCredentials' storage.
 function agentEnv(agent: Agent): Record<string, string> {
 	const common = { HOME: "/root" };
 
@@ -431,7 +449,8 @@ function agentEnv(agent: Agent): Record<string, string> {
 		};
 	}
 
-	return { ...common, CODEX_API_KEY: placeholderTokens.codexApiKey };
+	// The ChatGPT login is the placeholder auth.json in CODEX_HOME.
+	return { ...common, CODEX_HOME: codexHome };
 }
 
 type ResultEvent = {

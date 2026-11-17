@@ -9,10 +9,10 @@
 	},
 	"upload_source_maps": true,
 	// Credentials are Worker secrets only; the container receives placeholders.
-	// `wrangler deploy` fails when a required one is missing; OPENAI_API_KEY is optional and
-	// Codex requests are answered with 502 while it is unset.
+	// `wrangler deploy` fails when one is missing. CODEX_AUTH_JSON only seeds
+	// CodexCredentials, which stores the refreshed ChatGPT tokens from then on.
 	"secrets": {
-		"required": ["RUNNER_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
+		"required": ["RUNNER_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CODEX_AUTH_JSON"],
 	},
 	"containers": [
 		{
@@ -31,10 +31,18 @@
 				"class_name": "AgentSandbox",
 				"name": "SANDBOX",
 			},
+			{
+				"class_name": "CodexCredentials",
+				"name": "CODEX_CREDENTIALS",
+			},
 		],
 	},
 	"exports": {
 		"AgentSandbox": {
+			"type": "durable-object",
+			"storage": "sqlite",
+		},
+		"CodexCredentials": {
 			"type": "durable-object",
 			"storage": "sqlite",
 		},

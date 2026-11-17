@@ -1,41 +1,29 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import {
+	type CodexTokens,
+	type RefreshResult,
+	codexCredentials,
+	codexPlaceholders,
+	codexRedactions,
+	placeholderIdToken,
+} from "./codex-credentials";
 import { type CredentialHost, credentialHosts, deny, placeholderTokens } from "./sandbox";
 
-type Credential = {
-	// The request header that carries the credential, as `Bearer <token>`.
-	header: string;
-	placeholder: string;
-	secret: (env: Env) => string | undefined;
-};
-
-// Claude Code authenticates a CLAUDE_CODE_OAUTH_TOKEN as `Authorization:
-// Bearer <token>` and adds the OAuth capability to `anthropic-beta` itself, so
-// only the token changes. Codex sends CODEX_API_KEY as `Authorization: Bearer
-// <key>`.
-const credentials: Record<CredentialHost, Credential> = {
-	"api.anthropic.com": {
-		header: "authorization",
-		placeholder: placeholderTokens.claudeCodeOauthToken,
-		secret: (env) => env.CLAUDE_CODE_OAUTH_TOKEN,
-	},
-	"api.openai.com": {
-		header: "authorization",
-		placeholder: placeholderTokens.codexApiKey,
-		secret: (env) => env.OPENAI_API_KEY,
-	},
-};
+type Redaction = [secret: string, placeholder: string];
 
 const bearer = "Bearer ";
+// Codex sends `tokens.account_id` from auth.json in this header.
+const accountIdHeader = "chatgpt-account-id";
 
 // Forwards HTTPS requests to a credentialed host, exchanging the container's
-// placeholder credential for the real Worker secret. The intercept matches the
-// TLS server name, but the request URL comes from the Host header, which the
+// placeholder credential for the real one. The intercept matches the TLS
+// server name, but the request URL comes from the Host header, which the
 // container controls, so the protocol and host are checked again here and the
 // credential is chosen from the checked host.
 //
-// The real secret leaves this handler only in the request to its own host.
-// Every occurrence of it in the response headers and body is replaced with the
-// placeholder before the response reaches the container, and nothing here
+// A real credential leaves this handler only in a request to its own host.
+// Every occurrence of it in the response headers and body is replaced with
+// its placeholder before the response reaches the container, and nothing here
 // logs a header value.
 export class CredentialInjector extends WorkerEntrypoint<Env> {
 	async fetch(request: Request): Promise<Response> {
@@ -45,30 +33,125 @@ export class CredentialInjector extends WorkerEntrypoint<Env> {
 			return deny(url);
 		}
 
-		const credential = credentials[url.hostname];
-		const presented = request.headers.get(credential.header);
+		switch (url.hostname) {
+			case "api.anthropic.com":
+				return this.claude(request);
+			case "chatgpt.com":
+				return this.chatgpt(request);
+			case "auth.openai.com":
+				return this.codexRefresh(request, url);
+		}
+	}
 
+	// Claude Code authenticates a CLAUDE_CODE_OAUTH_TOKEN as `Authorization:
+	// Bearer <token>` and adds the OAuth capability to `anthropic-beta`
+	// itself, so only the token changes.
+	private async claude(request: Request): Promise<Response> {
 		// A request without the placeholder carries no credential this handler
 		// owns, so it is forwarded as sent.
-		if (presented !== bearer + credential.placeholder) {
+		if (request.headers.get("authorization") !== bearer + placeholderTokens.claudeCodeOauthToken) {
 			return fetch(request, { redirect: "manual" });
 		}
 
-		const secret = credential.secret(this.env);
+		const secret = this.env.CLAUDE_CODE_OAUTH_TOKEN;
 
 		if (!secret) {
-			console.error(`No credential is configured for ${url.hostname}`);
-			return new Response(`No credential is configured for ${url.hostname}\n`, {
+			console.error("No credential is configured for api.anthropic.com");
+			return new Response("No credential is configured for api.anthropic.com\n", {
 				status: 502,
 			});
 		}
 
 		const headers = new Headers(request.headers);
-		headers.set(credential.header, bearer + secret);
+		headers.set("authorization", bearer + secret);
 
 		const response = await fetch(new Request(request, { headers, redirect: "manual" }));
 
-		return redact(response, secret, credential.placeholder);
+		return redact(response, [[secret, placeholderTokens.claudeCodeOauthToken]]);
+	}
+
+	// Codex's model, account and usage requests. The access token comes from
+	// CodexCredentials, which refreshes it first when it is about to expire;
+	// a 401 refreshes it once more and the request is retried with the new
+	// token, the body having been buffered for that.
+	private async chatgpt(request: Request): Promise<Response> {
+		// A WebSocket's frames cannot be redacted. Codex falls back to HTTPS for
+		// the rest of the session when the handshake is answered with 426.
+		if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+			return new Response("Use HTTPS\n", { status: 426 });
+		}
+
+		if (request.headers.get("authorization") !== bearer + codexPlaceholders.accessToken) {
+			return fetch(request, { redirect: "manual" });
+		}
+
+		const store = codexCredentials(this.env);
+		const current = await store.current();
+
+		// Answered as a rejected token, so Codex runs its own recovery: its
+		// refresh request reaches codexRefresh, which returns the token
+		// endpoint's redacted error.
+		if (!current.ok) {
+			return new Response("The ChatGPT login could not be refreshed\n", { status: 401 });
+		}
+
+		const body = request.body === null ? null : await request.arrayBuffer();
+		const used = [current.tokens];
+		let response = await fetch(withCodexToken(request, body, current.tokens));
+
+		if (response.status === 401) {
+			const refreshed = await store.refreshAfter(current.tokens.accessToken);
+
+			if (refreshed.ok && refreshed.tokens.accessToken !== current.tokens.accessToken) {
+				await response.body?.cancel();
+				used.push(refreshed.tokens);
+				response = await fetch(withCodexToken(request, body, refreshed.tokens));
+			}
+		}
+
+		return redact(response, used.flatMap(codexRedactions));
+	}
+
+	// Codex's refresh request. A refresh presenting the placeholder refresh
+	// token is answered here, never forwarded: CodexCredentials refreshes the
+	// real pair in its queue and stores it, and the container receives the
+	// placeholders again. Any other request is forwarded as sent.
+	private async codexRefresh(request: Request, url: URL): Promise<Response> {
+		const body = request.body === null ? null : await request.arrayBuffer();
+
+		if (
+			request.method !== "POST" ||
+			url.pathname !== "/oauth/token" ||
+			!isPlaceholderRefresh(body)
+		) {
+			return fetch(
+				new Request(request.url, {
+					method: request.method,
+					headers: request.headers,
+					body,
+					redirect: "manual",
+				}),
+			);
+		}
+
+		const store = codexCredentials(this.env);
+		// Concurrent refresh requests read the same pair, so only the first
+		// one refreshes it.
+		const seen = await store.snapshot();
+		const result: RefreshResult = await store.refreshAfter(seen.accessToken);
+
+		if (!result.ok) {
+			return new Response(result.body, {
+				status: result.status,
+				headers: result.contentType ? { "content-type": result.contentType } : {},
+			});
+		}
+
+		return Response.json({
+			id_token: placeholderIdToken(result.tokens),
+			access_token: codexPlaceholders.accessToken,
+			refresh_token: codexPlaceholders.refreshToken,
+		});
 	}
 }
 
@@ -76,11 +159,47 @@ function isCredentialHost(hostname: string): hostname is CredentialHost {
 	return (credentialHosts as readonly string[]).includes(hostname);
 }
 
-function redact(response: Response, secret: string, placeholder: string): Response {
+// Codex sends its refresh as JSON.
+function isPlaceholderRefresh(body: ArrayBuffer | null): boolean {
+	if (body === null) {
+		return false;
+	}
+
+	try {
+		const grant: unknown = JSON.parse(new TextDecoder().decode(body));
+		return (
+			typeof grant === "object" &&
+			grant !== null &&
+			(grant as Record<string, unknown>).grant_type === "refresh_token" &&
+			(grant as Record<string, unknown>).refresh_token === codexPlaceholders.refreshToken
+		);
+	} catch {
+		return false;
+	}
+}
+
+function withCodexToken(request: Request, body: ArrayBuffer | null, tokens: CodexTokens): Request {
+	const headers = new Headers(request.headers);
+	headers.set("authorization", bearer + tokens.accessToken);
+
+	if (tokens.accountId !== undefined) {
+		headers.set(accountIdHeader, tokens.accountId);
+	}
+
+	return new Request(request.url, {
+		method: request.method,
+		headers,
+		body,
+		redirect: "manual",
+	});
+}
+
+function redact(response: Response, redactions: readonly Redaction[]): Response {
+	const active = redactions.filter(([secret]) => secret !== "");
 	const headers = new Headers();
 
 	for (const [name, value] of response.headers) {
-		headers.append(name, value.replaceAll(secret, placeholder));
+		headers.append(name, replaceAll(value, active));
 	}
 
 	if (response.body === null) {
@@ -91,19 +210,31 @@ function redact(response: Response, secret: string, placeholder: string): Respon
 		});
 	}
 
-	// Replacing the secret changes the body length.
+	// Replacing a secret changes the body length.
 	headers.delete("content-length");
 
 	const encoder = new TextEncoder();
-	const body = response.body.pipeThrough(
-		replaceBytes(encoder.encode(secret), encoder.encode(placeholder)),
-	);
+	let body = response.body;
+
+	for (const [secret, placeholder] of active) {
+		body = body.pipeThrough(replaceBytes(encoder.encode(secret), encoder.encode(placeholder)));
+	}
 
 	return new Response(body, {
 		status: response.status,
 		statusText: response.statusText,
 		headers,
 	});
+}
+
+function replaceAll(value: string, redactions: readonly Redaction[]): string {
+	let replaced = value;
+
+	for (const [secret, placeholder] of redactions) {
+		replaced = replaced.replaceAll(secret, placeholder);
+	}
+
+	return replaced;
 }
 
 // Replaces every occurrence of `needle` in a byte stream, including one split
