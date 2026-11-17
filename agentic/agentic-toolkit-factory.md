@@ -15,8 +15,13 @@ redefined in this repo.
 - The Factory acts as the **Factory App**: issue permissions only, no access to code. Nothing
   here asks for a code-scoped token, and nothing here merges a pull request.
 - A Backlog item's body is the work; its comments are never read as instructions.
-- The Factory never applies `agtk:queued`. A person with write access queuing an item is what
-  vouches for its body.
+- The Factory applies `agtk:queued` only to release an item from `agtk:blocked` whose
+  Predecessors are all closed as completed, and only as the Factory App. It never queues an item
+  that is a stub or that no person has queued or released before. A person with write access
+  queuing an item is what first vouches for its body. The Factory dispatches an item only after
+  `agtk backlog verify` trusts it: every author and editor of the body has write access, and
+  nobody edited it after it was queued or released, so a release never vouches for a body a
+  person has not read.
 
 ## Layout
 
@@ -24,6 +29,8 @@ redefined in this repo.
   module path `github.com/pedromvgomes/agentic-toolkit-factory/source/<project>`. Nothing builds
   at the repo root.
 - `source/factory/` — the Factory's command.
+- `spikes/<name>/` — throwaway experiments, not projects: outside `source/`, outside every lydite
+  component, not built by CI.
 - `CONTEXT.md` — the glossary.
 - `.gt-repo.yaml` — repository governance; run `gt repo sync` after editing it. The
   `ci-*.yml` stage workflows belong to this repo; gt writes the orchestration around them.
