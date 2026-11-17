@@ -55,6 +55,9 @@ Object, it survives a container exit and lets a new container resume.
 - A workspace held only in a hidden ref exists only when the ceiling permits a push; without it
   an interrupted Execution resumes from a fresh workspace.
 - The model session and the engine share a container, so the Outbound Worker cannot tell their
-  requests apart. A steered model session can write step results and checkpoints for its own
-  Execution, not for another one. The Execution's record is therefore only as trustworthy as the
-  model sessions that ran in it, and the token's scope remains the control that bounds the harm.
+  requests apart. A steered model session can write step results and checkpoints for any step of
+  its own Execution, not for another Execution. A forged checkpoint can make a resumed Execution
+  skip steps, deterministic verification and review gates included, and the token's scope does not
+  limit that. The Factory accepts this risk: the Execution's record is only as trustworthy as the
+  model sessions that ran in it, and a pull request an Execution opens is still read by a person
+  before it merges.
