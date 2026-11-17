@@ -1,0 +1,14 @@
+# What lydite builds, tests, scans and gates in agentic-toolkit-factory.
+#
+# All code lives under source/, one Go module per project. A component is the
+# unit its build tool treats as a whole, and for Go that is one module: each
+# project is a `go-test` component rooted at its directory, run with the race
+# detector.
+#
+# Components are declared rather than discovered, so source that no component
+# reaches is not scanned. A new project under source/ needs a component here.
+components:
+  - name: factory
+    dir: source/factory
+    runner: go-test
+    args: ["-race", "./..."]

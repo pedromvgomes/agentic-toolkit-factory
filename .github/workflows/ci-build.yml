@@ -1,0 +1,56 @@
+# ci-build — this file is yours.
+#
+# gt created it once and will never modify or delete it again. Put this
+# repository's build steps here; the orchestration around it stays gt's.
+#
+# It is called by ci-orchestration.yml and must keep `workflow_call`, or the
+# orchestrator loses the stage.
+#
+# Every Go module under source/ is built in its own directory: tidy
+# cleanliness, gofmt, golangci-lint, go vet and go build.
+name: ci-build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    name: build (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [factory]
+    defaults:
+      run:
+        working-directory: source/${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: source/${{ matrix.project }}/go.mod
+          cache-dependency-path: source/${{ matrix.project }}/go.mod
+
+      - name: go mod tidy leaves go.mod and go.sum unchanged
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: gofmt reports no file
+        run: test -z "$(gofmt -l .)"
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.12.2
+          working-directory: source/${{ matrix.project }}
+
+      - run: go vet ./...
+      - run: go build ./...

@@ -1,0 +1,38 @@
+# ci-test — this file is yours.
+#
+# gt created it once and will never modify or delete it again. Put this
+# repository's test suite here; the orchestration around it stays gt's.
+#
+# lydite gates coverage on its own: it runs each `.lydite/components.yml`
+# component's suite itself, instrumented. This stage is the required
+# correctness gate — every module's suite has to pass — independent of that.
+name: ci-test
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [factory]
+    defaults:
+      run:
+        working-directory: source/${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: source/${{ matrix.project }}/go.mod
+          cache-dependency-path: source/${{ matrix.project }}/go.mod
+
+      - run: go test -race -shuffle=on ./...
