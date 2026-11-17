@@ -1,0 +1,41 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cloudflare-sandbox-spike",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-11-17",
+	"compatibility_flags": ["nodejs_compat"],
+	"observability": {
+		"enabled": true,
+	},
+	"upload_source_maps": true,
+	// Credentials are Worker secrets only; the container receives placeholders.
+	// `wrangler deploy` fails when any of these is missing.
+	"secrets": {
+		"required": ["RUNNER_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY"],
+	},
+	"containers": [
+		{
+			"class_name": "AgentSandbox",
+			"scheduling_policy": "durable_object",
+			"images": {
+				"agent": {
+					"dockerfile": "./Dockerfile",
+				},
+			},
+		},
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "AgentSandbox",
+				"name": "SANDBOX",
+			},
+		],
+	},
+	"exports": {
+		"AgentSandbox": {
+			"type": "durable-object",
+			"storage": "sqlite",
+		},
+	},
+}

@@ -1,0 +1,17 @@
+{
+	"name": "cloudflare-sandbox-spike",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "tsc --noEmit",
+		"deploy": "wrangler deploy"
+	},
+	"dependencies": {
+		"@cloudflare/sandbox": "1.0.3"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "5.20261117.1",
+		"typescript": "7.0.2",
+		"wrangler": "4.163.0"
+	}
+}
