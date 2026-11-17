@@ -33,7 +33,10 @@ redefined in this repo.
 - `source/<project>/` — all code. Each project is its own Go module with its own `go.mod`,
   module path `github.com/pedromvgomes/agentic-toolkit-factory/source/<project>`. Nothing builds
   at the repo root.
-- `source/factory/` — the Factory's command.
+- `source/factory/` — the Factory's command, `agtk-factory`, a CLI built on `go.vipengele.org/cli`
+  (`core` and `spec`). `run <definition>` takes a Workflow Definition and returns an error because
+  the Factory has no engine to execute one; `version` (`--json`) comes from the framework. The
+  `run` command lives in `internal/command/run`, and its tests go through `ExecuteArgs`.
 - `spikes/<name>/` — throwaway experiments, not projects: outside `source/`, outside every lydite
   component, not built by CI.
 - `CONTEXT.md` — the glossary.

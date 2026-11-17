@@ -1,26 +1,38 @@
-// Command factory runs the Factory: the loop that starts agentic-toolkit Workflow
+// Command agtk-factory runs the Factory: the loop that starts agentic-toolkit Workflow
 // Executions from their triggers without a person starting them. The Execution that
 // implements a Backlog item takes it from agtk:queued to an open pull request.
 package main
 
 import (
-	"fmt"
-	"io"
 	"os"
+
+	cli "go.vipengele.org/cli/core"
+	"go.vipengele.org/cli/spec"
+
+	"github.com/pedromvgomes/agentic-toolkit-factory/source/factory/internal/command/run"
 )
 
-// version is set at build time with -ldflags "-X main.version=<v>".
-var version = "dev"
-
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout))
+	os.Exit(newApp().Execute())
 }
 
-// run writes the build's version and returns the process exit code: 1 when
-// the version cannot be written, since nothing else would report it.
-func run(_ []string, stdout io.Writer) int {
-	if _, err := fmt.Fprintf(stdout, "factory %s\n", version); err != nil {
-		return 1
+// identity is the tool's identity: the binary's name, its repository, the prefix of its
+// environment variables and the directory it owns under the platform's roots.
+func identity() spec.Identity {
+	return spec.Identity{
+		Name:      "agtk-factory",
+		Owner:     "pedromvgomes",
+		Repo:      "agentic-toolkit-factory",
+		EnvPrefix: "AGTK_FACTORY",
+		DirName:   "agtk-factory",
 	}
-	return 0
+}
+
+// newApp builds the App with the standard -v and --json flags and the Factory's commands. opts
+// follow the standard options, so a test fixes what "version" prints with cli.WithBuildInfo.
+// The App adds "version" itself; a command of that name added here makes the tree invalid.
+func newApp(opts ...cli.Option) *cli.App {
+	app := cli.New(identity(), append([]cli.Option{cli.WithVerbose(), cli.WithJSON()}, opts...)...)
+	app.Add(run.New())
+	return app
 }
