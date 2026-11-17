@@ -28,6 +28,13 @@ export const allowedHosts: readonly string[] = [
 	"api.openai.com",
 ];
 
+// The allowed hosts whose requests go through CredentialInjector, which
+// exchanges the container's placeholder credential for the real one. Every
+// other allowed host is reached through Egress with the request unchanged.
+export const credentialHosts = ["api.anthropic.com", "api.openai.com"] as const;
+
+export type CredentialHost = (typeof credentialHosts)[number];
+
 // The container holds these values in place of real credentials. They are
 // not secrets: a request that carries one reaches its host unauthenticated
 // unless the handler registered for that host substitutes the real value.
@@ -101,7 +108,7 @@ export class Deny extends WorkerEntrypoint<Env> {
 	}
 }
 
-function deny(url: URL): Response {
+export function deny(url: URL): Response {
 	console.log(`Blocked ${url.protocol}//${url.hostname}`);
 	return new Response(`${url.hostname} is not reachable from this sandbox\n`, {
 		status: 403,
@@ -271,7 +278,11 @@ export class AgentSandbox extends DurableObject<Env> {
 	// placeholder credential is exchanged for the real one.
 	private async registerIntercepts(): Promise<void> {
 		for (const host of allowedHosts) {
-			await this.container.interceptOutboundHttps(host, this.ctx.exports.Egress);
+			const handler = (credentialHosts as readonly string[]).includes(host)
+				? this.ctx.exports.CredentialInjector
+				: this.ctx.exports.Egress;
+
+			await this.container.interceptOutboundHttps(host, handler);
 		}
 
 		await this.container.interceptAllOutboundHttp(this.ctx.exports.Deny);

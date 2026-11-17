@@ -1,5 +1,6 @@
 import type { Agent, AgentSandbox } from "./sandbox";
 
+export { CredentialInjector } from "./outbound";
 export { AgentSandbox, Deny, Egress } from "./sandbox";
 
 declare global {
