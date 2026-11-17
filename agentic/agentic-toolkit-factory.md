@@ -29,6 +29,8 @@ redefined in this repo.
   module path `github.com/pedromvgomes/agentic-toolkit-factory/source/<project>`. Nothing builds
   at the repo root.
 - `source/factory/` — the Factory's command.
+- `spikes/<name>/` — throwaway experiments, not projects: outside `source/`, outside every lydite
+  component, not built by CI.
 - `CONTEXT.md` — the glossary.
 - `.gt-repo.yaml` — repository governance; run `gt repo sync` after editing it. The
   `ci-*.yml` stage workflows belong to this repo; gt writes the orchestration around them.
